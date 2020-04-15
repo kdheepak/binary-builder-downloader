@@ -186,7 +186,9 @@ proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx
 
 when isMainModule:
   import cligen
+  include cligen/mergeCfgEnv
   const nd = staticRead "../bbd.nimble"
+  clCfg.version = nd.fromNimble("version")
   dispatchMulti(
     [ list, noAutoEcho=true ],
     [ download, noAutoEcho=true ],
