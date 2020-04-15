@@ -16,6 +16,7 @@ import sugar
 import terminal
 import parsetoml
 import base64
+import untar
 from os import sleep
 
 type
@@ -25,7 +26,7 @@ proc newAuthorizedHttpClient(token = ""): HttpClient =
   var client = newHttpClient()
   let t = if token == "": getEnv("GITHUB_TOKEN", "") else: token
   if t != "":
-    client.headers = newHttpHeaders({ "Authorization": fmt"token {t}" })
+    client.headers = newHttpHeaders({ "Authorization": &"token {t}" })
   return client
 
 proc get_number_of_pages(): tuple[f:int, l:int] =
@@ -41,7 +42,7 @@ proc get_number_of_pages(): tuple[f:int, l:int] =
 
 proc get_repos_on_page(page_number: int): seq[string] =
   var client = newAuthorizedHttpClient()
-  let url = fmt"https://api.github.com/orgs/JuliaBinaryWrappers/repos?page={page_number}"
+  let url = &"https://api.github.com/orgs/JuliaBinaryWrappers/repos?page={page_number}"
   let response = client.request(url, httpMethod = "get", body = "", headers = nil)
   let data = parseJson(response.body)
   var repos: seq[string] = @[]
@@ -107,14 +108,14 @@ proc list(): seq[string] =
 
 proc get_artifacts_toml(package: string): JsonNode =
   var client = newAuthorizedHttpClient()
-  let url = fmt"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Artifacts.toml"
+  let url = &"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Artifacts.toml"
   let response = client.request(url, httpMethod = "get", body = "", headers = nil)
   let data = parseJson(response.body)
   return data
 
 proc get_project_toml(package: string): JsonNode =
   var client = newAuthorizedHttpClient()
-  let url = fmt"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Project.toml"
+  let url = &"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Project.toml"
   let response = client.request(url, httpMethod = "get", body = "", headers = nil)
   let data = parseJson(response.body)
   return data
@@ -140,7 +141,7 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
   var threads = newSeq[FlowVar[JsonNode]]()
   var content: JsonNode
 
-  with_progress_bar(threads, fmt"Fetching meta data for {package}"):
+  with_progress_bar(threads, &"Fetching meta data for {package}"):
     threads.add spawn get_artifacts_toml(package)
     threads.add spawn get_project_toml(package)
 
@@ -165,7 +166,7 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
 
   return download_list
 
-proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = ""): string =
+proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = "", install = ""): string =
   ## Download package.
   stdout.hideCursor()
 
@@ -180,8 +181,24 @@ proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx
       threads.add( spawn url.downloadFile() )
 
   stdout.eraseLine()
+
+  var tarballs = newSeq[string]()
   for thread in threads:
-    echo ^thread
+    tarballs.add(^thread)
+
+  if install != "":
+    if not dirExists(install):
+      createDir(install)
+    stdout.showLine &"Installing in {install}"
+    for tarball in tarballs:
+      var file = newTarFile(tarball)
+      file.extract(install)
+
+  stdout.eraseLine()
+
+  for tarball in tarballs:
+    echo tarball
+
   stdout.showCursor()
 
 when isMainModule:

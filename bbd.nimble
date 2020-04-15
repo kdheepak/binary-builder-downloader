@@ -14,6 +14,7 @@ requires "nim >= 1.2.0"
 requires "cligen"
 requires "regex"
 requires "parsetoml"
+requires "untar"
 
 import strutils
 import os
