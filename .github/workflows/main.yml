@@ -35,3 +35,7 @@ jobs:
       with:
         nim-version: ${{ env.NIM_VERSION }}
     - run: nimble build -Y
+    - uses: actions/upload-artifact@v1
+      with:
+        name: bbd
+        path: bin/bbd
