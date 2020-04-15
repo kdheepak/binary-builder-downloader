@@ -36,11 +36,14 @@ jobs:
     - uses: jiro4989/setup-nim-action@v1.0.2
       with:
         nim-version: ${{ env.NIM_VERSION }}
-    - run: nimble build -Y
+    - name: Build files
+      run: nimble build -d:release --opt:size -Y
+    - name: Archive files
+      run: nimble archive
     - name: Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: 'bin/*'
+        files: 'dist/*'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
