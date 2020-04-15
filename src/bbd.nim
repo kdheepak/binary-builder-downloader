@@ -105,21 +105,19 @@ proc list(): seq[string] =
 
   return repos
 
-proc get_artifacts_toml(package: string): TomlValueRef =
+proc get_artifacts_toml(package: string): JsonNode =
   var client = newAuthorizedHttpClient()
   let url = fmt"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Artifacts.toml"
   let response = client.request(url, httpMethod = "get", body = "", headers = nil)
   let data = parseJson(response.body)
-  let table = parsetoml.parseString(decode(data["content"].getStr()))
-  return table
+  return data
 
-proc get_project_toml(package: string): TomlValueRef =
+proc get_project_toml(package: string): JsonNode =
   var client = newAuthorizedHttpClient()
   let url = fmt"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Project.toml"
   let response = client.request(url, httpMethod = "get", body = "", headers = nil)
   let data = parseJson(response.body)
-  let table = parsetoml.parseString(decode(data["content"].getStr()))
-  return table
+  return data
 
 proc downloadFile(url: string): string =
   var client = newHttpClient()
@@ -139,7 +137,16 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
   of "powerpc64el": "powerpc64le"
   else: arch
 
-  let data = get_artifacts_toml(package).toJson()
+  var threads = newSeq[FlowVar[JsonNode]]()
+  var content: JsonNode
+
+  with_progress_bar(threads, fmt"Fetching meta data for {package}"):
+    threads.add spawn get_artifacts_toml(package)
+    threads.add spawn get_project_toml(package)
+
+  content = ^threads[0]
+
+  let data = parsetoml.parseString(decode(content["content"].getStr())).toJson()
 
   var download_list = newSeq[string]()
 
@@ -149,7 +156,9 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
       download["cxxstring_abi"]["value"].getStr == cxxstring_abi:
       download_list.add(download["download"][0]["url"]["value"].getStr)
 
-  let dependencies = get_project_toml(package).toJson()
+  content = ^threads[1]
+  let dependencies = parsetoml.parseString(decode(content["content"].getStr())).toJson()
+
   for k,v in dependencies["deps"]:
     if k.endsWith("_jll"):
       download_list = concat(download_list, get_release_urls(k.replace("_jll", ""), os, arch, cxxstring_abi, libc))
@@ -159,7 +168,8 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
 proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = ""): string =
   ## Download package.
   stdout.hideCursor()
-  stdout.showLine "Fetching meta data ..."
+
+  stdout.showLine "Fetching meta data"
 
   let download_list = get_release_urls(package, os, arch, cxxstring_abi, libc)
 
