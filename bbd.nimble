@@ -31,4 +31,5 @@ task archive, "Create archived assets":
     when buildOS == "windows":
       exec &"7z a {assets}.zip {assets}"
     else:
+      exec &"chmod +x ./{assets / \"bin\" / app}"
       exec &"tar czf {assets}.tar.gz {assets}"
