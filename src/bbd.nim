@@ -14,16 +14,22 @@ import os
 import sequtils
 import sugar
 import terminal
+import parsetoml
+import base64
+from os import sleep
 
 type
   GithubError* = object of IOError
 
-proc get_number_of_pages(token: string): tuple[f:int, l:int] =
+proc newAuthorizedHttpClient(token = ""): HttpClient =
   var client = newHttpClient()
   let t = if token == "": getEnv("GITHUB_TOKEN", "") else: token
   if t != "":
     client.headers = newHttpHeaders({ "Authorization": fmt"token {t}" })
+  return client
 
+proc get_number_of_pages(): tuple[f:int, l:int] =
+  var client = newAuthorizedHttpClient()
   let url = "https://api.github.com/orgs/JuliaBinaryWrappers/repos"
   let response = client.request(url, httpMethod = "get", body = "", headers = nil)
   let h = response.headers["link"].split(",")[1].split(";")[0]
@@ -33,11 +39,8 @@ proc get_number_of_pages(token: string): tuple[f:int, l:int] =
   let first_page = 1
   return (first_page, last_page)
 
-proc get_repos_on_page(token: string, page_number: int): seq[string] {.thread.} =
-  var client = newHttpClient()
-  let t = if token == "": getEnv("GITHUB_TOKEN", "") else: token
-  if t != "":
-    client.headers = newHttpHeaders({ "Authorization": fmt"token {t}" })
+proc get_repos_on_page(page_number: int): seq[string] =
+  var client = newAuthorizedHttpClient()
   let url = fmt"https://api.github.com/orgs/JuliaBinaryWrappers/repos?page={page_number}"
   let response = client.request(url, httpMethod = "get", body = "", headers = nil)
   let data = parseJson(response.body)
@@ -51,36 +54,42 @@ proc showLine(f: File, s: string) =
   f.write(s)
   f.flushFile()
 
-proc list(token: string = ""): seq[string] =
+template with_progress_bar(threads: untyped, message: string, body: untyped) =
+  stdout.showLine(message)
+
+  body
+
+  var content = ' '.repeat(threads.len)
+  while not all(threads, r => r.isReady):
+    # TODO: always fit in one line
+    let total_threads = len(threads)
+    let ready_threads = len(filter(threads, r => r.isReady))
+    for progress in 0 ..< ready_threads:
+      content[progress] = '#'
+    stdout.showLine(message & " : " & $ready_threads & "/" & $total_threads & " [" & content & "]")
+    sleep(100)
+
+proc list(): seq[string] =
   ## Get package list.
   stdout.hideCursor()
   stdout.showLine "Fetching package sources"
 
-  let thread = spawn get_number_of_pages(token)
+  let thread = spawn get_number_of_pages()
 
   var counter = 0
   while not thread.isReady:
-    os.sleep(250)
+    sleep(250)
     counter += 1
     stdout.showLine("Fetching package sources: " & ".".repeat(counter mod 4))
 
   let (first_page, last_page) = ^thread
 
-  var content = ' '.repeat(last_page)
-  stdout.showLine("Downloading package list: [$1]" % [content])
-
   var threads = newSeq[FlowVar[seq[string]]]()
 
-  for page_number in first_page .. last_page:
-    let r = spawn get_repos_on_page(token, page_number)
-    threads.add(r)
-
-  while not all(threads, r => r.isReady):
-    # TODO: always fit in one line
-    for progress in 0 ..< len(filter(threads, r => r.isReady)):
-      content[progress] = '#'
-    stdout.showLine("Downloading package list: [$1]" % [content])
-    os.sleep(100)
+  with_progress_bar(threads, "Downloading package list"):
+    for page_number in first_page .. last_page:
+      let r = spawn get_repos_on_page(page_number)
+      threads.add(r)
 
   stdout.eraseLine()
 
@@ -96,14 +105,79 @@ proc list(token: string = ""): seq[string] =
 
   return repos
 
-proc download(package: string = "", token: string = ""): string =
+proc get_artifacts_toml(package: string): TomlValueRef =
+  var client = newAuthorizedHttpClient()
+  let url = fmt"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Artifacts.toml"
+  let response = client.request(url, httpMethod = "get", body = "", headers = nil)
+  let data = parseJson(response.body)
+  let table = parsetoml.parseString(decode(data["content"].getStr()))
+  return table
+
+proc get_project_toml(package: string): TomlValueRef =
+  var client = newAuthorizedHttpClient()
+  let url = fmt"https://api.github.com/repos/JuliaBinaryWrappers/{package}_jll.jl/contents/Project.toml"
+  let response = client.request(url, httpMethod = "get", body = "", headers = nil)
+  let data = parseJson(response.body)
+  let table = parsetoml.parseString(decode(data["content"].getStr()))
+  return table
+
+proc downloadFile(url: string): string =
+  var client = newHttpClient()
+  let filename = url.split("/")
+  client.downloadFile(url, filename[filename.high])
+  return filename[filename.high]
+
+proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: string, libc: string): seq[string] =
+
+  var os = if os == "macosx": "macos" else: os
+
+  var arch = case arch
+  of "amd64": "x86_64"
+  of "i386": "i686"
+  of "arm64": "aarch64"
+  of "arm": "armv7l"
+  of "powerpc64el": "powerpc64le"
+  else: arch
+
+  let data = get_artifacts_toml(package).toJson()
+
+  var download_list = newSeq[string]()
+
+  for download in data[package].getElems():
+    if download["arch"]["value"].getStr == arch and
+      download["os"]["value"].getStr == os and
+      download["cxxstring_abi"]["value"].getStr == cxxstring_abi:
+      download_list.add(download["download"][0]["url"]["value"].getStr)
+
+  let dependencies = get_project_toml(package).toJson()
+  for k,v in dependencies["deps"]:
+    if k.endsWith("_jll"):
+      download_list = concat(download_list, get_release_urls(k.replace("_jll", ""), os, arch, cxxstring_abi, libc))
+
+  return download_list
+
+proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = ""): string =
   ## Download package.
-  return "/path/to/download"
+  stdout.hideCursor()
+  stdout.showLine "Fetching meta data ..."
+
+  let download_list = get_release_urls(package, os, arch, cxxstring_abi, libc)
+
+  var threads = newSeq[FlowVar[string]]()
+
+  with_progress_bar(threads, "Downloading assets"):
+    for url in download_list:
+      threads.add( spawn url.downloadFile() )
+
+  stdout.eraseLine()
+  for thread in threads:
+    echo ^thread
+  stdout.showCursor()
 
 when isMainModule:
   import cligen
   const nd = staticRead "../bbd.nimble"
   dispatchMulti(
     [ list, noAutoEcho=true ],
-    [ download ],
+    [ download, noAutoEcho=true ],
   )
