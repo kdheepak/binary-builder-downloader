@@ -35,7 +35,10 @@ jobs:
       with:
         nim-version: ${{ env.NIM_VERSION }}
     - run: nimble build -Y
-    - uses: actions/upload-artifact@v1
+    - name: Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
       with:
-        name: bbd
-        path: bin/bbd
+        files: 'bin/bbd*.*'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
