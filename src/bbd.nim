@@ -193,11 +193,14 @@ proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx
     for tarball in tarballs:
       var file = newTarFile(tarball)
       file.extract(install)
+      removeFile(tarball)
+    stdout.eraseLine()
+    echo install
+  else:
+    for tarball in tarballs:
+      echo tarball
 
   stdout.eraseLine()
-
-  for tarball in tarballs:
-    echo tarball
 
   stdout.showCursor()
 
