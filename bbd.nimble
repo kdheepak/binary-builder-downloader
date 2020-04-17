@@ -15,6 +15,7 @@ requires "cligen"
 requires "regex"
 requires "parsetoml"
 requires "untar"
+requires "nimcr"
 
 import strutils
 import os
@@ -34,3 +35,6 @@ task archive, "Create archived assets":
     else:
       exec &"chmod +x ./{assets / \"bin\" / app}"
       exec &"tar czf {assets}.tar.gz {assets}"
+
+task changelog, "Create a changelog":
+  exec("./scripts/changelog.nim")

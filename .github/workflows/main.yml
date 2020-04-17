@@ -38,7 +38,13 @@ jobs:
         nim-version: ${{ env.NIM_VERSION }}
     - name: Build files
       run: nimble build -d:release --opt:size -Y
+    - name: Generate Changelog
+      run: |
+          nim --version
+          ./scripts/changelog.nim > ${{ github.workflow }}-CHANGELOG.txt
+          cat ${{ github.workflow }}-CHANGELOG.txt
     - name: Archive files
+      if: startsWith(github.ref, 'refs/tags/')
       run: nimble archive
     - name: Release
       if: startsWith(github.ref, 'refs/tags/')
