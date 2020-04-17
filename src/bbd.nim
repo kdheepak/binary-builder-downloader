@@ -152,9 +152,11 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
   var download_list = newSeq[string]()
 
   for download in data[package].getElems():
-    if download["arch"]["value"].getStr == arch and
-      download["os"]["value"].getStr == os and
-      download["cxxstring_abi"]["value"].getStr == cxxstring_abi:
+    if download["arch"]["value"].getStr == arch and download["os"]["value"].getStr == os:
+      if download.haskey("cxxstring_abi") and download["cxxstring_abi"]["value"].getStr != cxxstring_abi:
+        continue
+      if download.haskey("libc") and download["libc"]["value"].getStr != libc:
+        continue
       download_list.add(download["download"][0]["url"]["value"].getStr)
 
   content = ^threads[1]
