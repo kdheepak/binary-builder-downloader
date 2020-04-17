@@ -6,7 +6,6 @@ import strformat
 import httpclient
 import json
 import mimetypes
-import ospaths
 import osproc
 import regex
 import threadpool
