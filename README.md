@@ -2,6 +2,8 @@
 
 CLI to download artifacts produced by BinaryBuilder.
 
+![](https://user-images.githubusercontent.com/1813121/79628394-d3fee500-80fd-11ea-9b11-d37a0cc98a0a.gif)
+
 ### Install
 
 Download the command line tool from [releases](https://github.com/kdheepak/binary-builder-downloader/releases/latest).
