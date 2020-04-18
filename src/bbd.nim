@@ -167,7 +167,22 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
 
   return download_list
 
-proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = "", install = ""): string =
+proc untar(tarball: string, install_path: string) =
+  var file = newTarFile(tarball)
+  file.extract(install_path)
+  removeFile(tarball)
+
+proc install(tarball: string, install_path: string): string =
+  if not dirExists(install_path):
+    createDir(install_path)
+  untar(tarball, install_path)
+  when defined(macosx) or defined(linux):
+    let bin = install_path / "bin"
+    if dirExists(bin):
+      discard execProcess(&"chmod -R +x {bin}")
+  return install_path
+
+proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = "", install_path = ""): string =
   ## Download package.
   stdout.hideCursor()
 
@@ -180,28 +195,20 @@ proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx
   with_progress_bar(threads, "Downloading assets"):
     for url in download_list:
       threads.add( spawn url.downloadFile() )
-
-  stdout.eraseLine()
-
   var tarballs = newSeq[string]()
   for thread in threads:
     tarballs.add(^thread)
+  stdout.eraseLine()
 
-  if install != "":
-    if not dirExists(install):
-      createDir(install)
-    stdout.showLine &"Installing in {install}"
+  if install_path != "":
     for tarball in tarballs:
-      var file = newTarFile(tarball)
-      file.extract(install)
-      removeFile(tarball)
-    stdout.eraseLine()
-    echo install
+      stdout.showLine &"Installing {tarball} to {install_path}"
+      stdout.eraseLine()
+      discard install(tarball, install_path)
+    echo install_path
   else:
     for tarball in tarballs:
       echo tarball
-
-  stdout.eraseLine()
 
   stdout.showCursor()
 
