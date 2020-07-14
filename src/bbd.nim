@@ -1,6 +1,3 @@
-# This is just an example to get you started. A typical binary package
-# uses this file as the main entry point of the application.
-
 import strutils
 import strformat
 import httpclient
@@ -182,7 +179,7 @@ proc install(tarball: string, install_path: string): string =
       discard execProcess(&"chmod -R +x {bin}")
   return install_path
 
-proc download(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = "", install_path = ""): string =
+proc download*(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = "", install_path = ""): string =
   ## Download package.
   stdout.hideCursor()
 

@@ -7,6 +7,7 @@ license       = "MIT"
 srcDir        = "src"
 binDir        = "bin"
 bin           = @["bbd"]
+installFiles  = @["bbd.nim"]
 
 # Dependencies
 
