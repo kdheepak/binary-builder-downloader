@@ -13,6 +13,7 @@ import terminal
 import parsetoml
 import base64
 import untar
+import sets
 from os import sleep
 
 type
@@ -52,7 +53,7 @@ proc showLine(f: File, s: string) =
   f.flushFile()
 
 template with_progress_bar(threads: untyped, message: string, body: untyped) =
-  stdout.showLine(message)
+  echo message
 
   body
 
@@ -63,13 +64,11 @@ template with_progress_bar(threads: untyped, message: string, body: untyped) =
     let ready_threads = len(filter(threads, r => r.isReady))
     for progress in 0 ..< ready_threads:
       content[progress] = '#'
-    stdout.showLine(message & " : " & $ready_threads & "/" & $total_threads & " [" & content & "]")
     sleep(100)
 
 proc list(): seq[string] =
   ## Get package list.
-  stdout.hideCursor()
-  stdout.showLine "Fetching package sources"
+  echo "Fetching package sources"
 
   let thread = spawn get_number_of_pages()
 
@@ -77,7 +76,7 @@ proc list(): seq[string] =
   while not thread.isReady:
     sleep(250)
     counter += 1
-    stdout.showLine("Fetching package sources: " & ".".repeat(counter mod 4))
+    echo("Fetching package sources: " & ".".repeat(counter mod 4))
 
   let (first_page, last_page) = ^thread
 
@@ -88,8 +87,6 @@ proc list(): seq[string] =
       let r = spawn get_repos_on_page(page_number)
       threads.add(r)
 
-  stdout.eraseLine()
-
   var repos = newSeq[string]()
   for r in threads:
     for repo in ^r:
@@ -97,8 +94,6 @@ proc list(): seq[string] =
 
   for repo in repos:
     echo repo
-
-  stdout.showCursor()
 
   return repos
 
@@ -183,9 +178,8 @@ proc install(tarball: string, install_path: string): string =
 
 proc download*(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cxx03", libc = "", install_path = ""): string =
   ## Download package.
-  stdout.hideCursor()
 
-  stdout.showLine "Fetching meta data"
+  echo "Fetching meta data"
 
   let download_list = get_release_urls(package, os, arch, cxxstring_abi, libc)
 
@@ -194,22 +188,18 @@ proc download*(package: string, os = hostOS, arch = hostCPU, cxxstring_abi = "cx
   with_progress_bar(threads, "Downloading assets"):
     for url in download_list:
       threads.add( spawn url.downloadFile() )
-  var tarballs = newSeq[string]()
+  var tarballs = toHashSet(newSeq[string]())
   for thread in threads:
-    tarballs.add(^thread)
-  stdout.eraseLine()
+    tarballs.incl(^thread)
 
   if install_path != "":
     for tarball in tarballs:
-      stdout.showLine &"Installing {tarball} to {install_path}"
-      stdout.eraseLine()
+      echo &"Installing {tarball} to {install_path}"
       discard install(tarball, install_path)
     echo install_path
   else:
     for tarball in tarballs:
       echo tarball
-
-  stdout.showCursor()
 
 when isMainModule:
   import cligen
