@@ -143,7 +143,8 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
 
   content = ^threads[0]
 
-  let data = parsetoml.parseString(decode(content["content"].getStr())).toJson()
+  let base64_decoded_data = join(split(content["content"].getStr()))
+  let data = parsetoml.parseString(decode(base64_decoded_data)).toJson()
 
   var download_list = newSeq[string]()
 
@@ -156,7 +157,8 @@ proc get_release_urls(package: string, os: string, arch: string, cxxstring_abi: 
       download_list.add(download["download"][0]["url"]["value"].getStr)
 
   content = ^threads[1]
-  let dependencies = parsetoml.parseString(decode(content["content"].getStr())).toJson()
+  let base64_decoded_dependencies = join(split(content["content"].getStr()))
+  let dependencies = parsetoml.parseString(decode(base64_decoded_dependencies)).toJson()
 
   for k,v in dependencies["deps"]:
     if k.endsWith("_jll"):
